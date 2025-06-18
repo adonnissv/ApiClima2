@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard del Clima</title>
+    
+    <!-- Tailwind CSS para un diseño moderno y responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter para una tipografía limpia -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Estilos personalizados y configuración de la fuente base */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Un fondo suave para la página */
+            transition: background-color 0.5s ease;
+        }
+        /* Estilo para el preloader de la respuesta JSON */
+        pre {
+            background-color: #1e293b; /* Color de fondo oscuro */
+            color: #f8fafc; /* Color de texto claro */
+            padding: 1rem;
+            border-radius: 0.5rem; /* Bordes redondeados */
+            white-space: pre-wrap; /* Asegura que el texto se ajuste */
+            word-wrap: break-word; /* Rompe palabras largas si es necesario */
+            max-height: 400px;
+            overflow-y: auto; /* Scroll si el contenido es muy largo */
+        }
+        .detail-card {
+            background-color: white;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .detail-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .icon-container svg {
+            width: 2rem;
+            height: 2rem;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-5xl mx-auto">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">Dashboard del Clima en Tiempo Real</h1>
+            <p class="text-gray-600 mt-2">Ingresa una ciudad para consultar los datos climáticos a través de la API de OpenWeatherMap.</p>
+        </header>
+
+        <!-- Sección de Búsqueda -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">Paso 1: Realizar la Petición</h2>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="text" id="cityInput" placeholder="Ej: Santiago, London, Tokyo" class="flex-grow p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                <button id="searchButton" class="bg-indigo-600 text-white font-semibold py-3 px-6 rounded-md hover:bg-indigo-700 transition-colors duration-300 shadow">
+                    Buscar Clima
+                </button>
+            </div>
+        </div>
+
+        <!-- Contenedor para los resultados -->
+        <div id="resultsContainer" class="space-y-6 hidden">
+
+            <!-- 1. Visualización de Datos en Interfaz (DISEÑO MEJORADO) -->
+            <div class="bg-transparent p-0">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">Visualización en la Interfaz</h3>
+                <div id="weather-display" class="space-y-6">
+                    <!-- Tarjeta Principal (se llena dinámicamente) -->
+                    <div id="main-info-card" class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl shadow-lg flex flex-col sm:flex-row justify-between items-center transition-all duration-500"></div>
+
+                    <!-- Rejilla de Detalles (se llena dinámicamente) -->
+                    <div id="details-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Tarjeta de Viento -->
+                        <div id="wind-card" class="detail-card p-6 rounded-xl shadow-md"></div>
+                        <!-- Tarjeta Atmosférica -->
+                        <div id="atmosphere-card" class="detail-card p-6 rounded-xl shadow-md"></div>
+                        <!-- Tarjeta de Sol -->
+                        <div id="sun-card" class="detail-card p-6 rounded-xl shadow-md"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Detalles de la Petición HTTP -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 mb-4">Detalles de la Petición HTTP Enviada</h3>
+                <div class="text-sm space-y-2">
+                    <p><strong>Endpoint (URL):</strong> <code id="requestUrl" class="text-indigo-600 break-all"></code></p>
+                    <p><strong>Método:</strong> <code id="requestMethod" class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-mono"></code></p>
+                </div>
+            </div>
+
+            <!-- 3. Manejo de la Respuesta (JSON) -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 mb-4">Respuesta de la API (JSON Crudo)</h3>
+                <pre id="jsonResponse"></pre>
+            </div>
+
+        </div>
+
+        <!-- Manejo de Errores -->
+        <div id="errorContainer" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mt-6" role="alert">
+            <strong class="font-bold">¡Error!</strong>
+            <span class="block sm:inline" id="errorMessage"></span>
+        </div>
+
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓN ---
+        const apiKey = "3c61b3455e4bda48221e72cee0bc8331";
+        
+        // --- ELEMENTOS DEL DOM ---
+        const cityInput = document.getElementById('cityInput');
+        const searchButton = document.getElementById('searchButton');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const errorContainer = document.getElementById('errorContainer');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // --- MANEJADORES DE EVENTOS ---
+        searchButton.addEventListener('click', fetchWeather);
+        cityInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') fetchWeather();
+        });
+
+        // --- FUNCIONES DE LA API ---
+        async function fetchWeather() {
+            const city = cityInput.value.trim();
+            if (!city) {
+                showError("Por favor, ingresa el nombre de una ciudad.");
+                return;
+            }
+            hideResults();
+            hideError();
+
+            const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric&lang=es`;
+            document.getElementById('requestUrl').textContent = apiUrl;
+            document.getElementById('requestMethod').textContent = 'GET';
+            
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                if (response.ok) {
+                    displayData(data);
+                } else {
+                    throw new Error(data.message || 'Error desconocido');
+                }
+            } catch (error) {
+                console.error("Error en la petición:", error);
+                showError(`No se pudo obtener el clima. Motivo: ${error.message}`);
+            }
+        }
+        
+        // --- FUNCIONES DE VISUALIZACIÓN ---
+        function displayData(data) {
+            // Mostrar JSON y petición
+            document.getElementById('jsonResponse').textContent = JSON.stringify(data, null, 2);
+            
+            // Poblar las nuevas tarjetas de interfaz
+            populateMainCard(data);
+            populateDetailsCards(data);
+
+            resultsContainer.classList.remove('hidden');
+        }
+
+        function populateMainCard(data) {
+            const mainCard = document.getElementById('main-info-card');
+            const { name, sys, main, weather } = data;
+            const iconUrl = `https://openweathermap.org/img/wn/${weather[0].icon}@4x.png`;
+
+            mainCard.innerHTML = `
+                <div class="text-center sm:text-left">
+                    <h4 class="text-3xl font-bold">${name}, ${sys.country}</h4>
+                    <p class="text-6xl font-bold my-2">${main.temp.toFixed(1)}°C</p>
+                    <p class="text-xl capitalize">${weather[0].description}</p>
+                    <p class="text-sm mt-2">Sensación térmica: ${main.feels_like.toFixed(1)}°C</p>
+                </div>
+                <div class="mt-4 sm:mt-0">
+                    <img src="${iconUrl}" alt="Icono del clima" class="w-32 h-32 mx-auto">
+                </div>
+            `;
+        }
+
+        function populateDetailsCards(data) {
+            const { wind, main, sys, visibility } = data;
+            
+            // Íconos SVG para una carga rápida y estilo consistente
+            const icons = {
+                wind: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3.75a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0112 3.75zM7.5 8.25a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 017.5 8.25zM16.5 8.25a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM4.875 12a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 014.875 12zM19.125 12a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM8.25 15.75a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM15.75 15.75a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75z" /></svg>',
+                humidity: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 018.638 5.214l2.121-2.121a.75.75 0 011.061 0l2.12 2.12z" /></svg>',
+                pressure: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.75h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" /></svg>',
+                sunrise: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>',
+                sunset: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.343V18.25m-6.28-7.967l12.56 0m-14.707-4.243l1.414 1.414M18.364 18.364l1.414 1.414M19.777 9.967l-1.414 1.414M4.223 9.967L5.636 8.553" /></svg>'
+            };
+
+            // Tarjeta de Viento
+            const windCard = document.getElementById('wind-card');
+            windCard.innerHTML = createDetailItem('Viento', `${(wind.speed * 3.6).toFixed(1)} km/h`, `Dirección: ${convertWindDirection(wind.deg)}`, icons.wind);
+
+            // Tarjeta Atmosférica
+            const atmosphereCard = document.getElementById('atmosphere-card');
+            atmosphereCard.innerHTML = `
+                ${createDetailItem('Humedad', `${main.humidity}%`, '', icons.humidity)}
+                <hr class="my-4">
+                ${createDetailItem('Presión', `${main.pressure} hPa`, '', icons.pressure)}
+            `;
+            
+            // Tarjeta de Sol
+            const sunCard = document.getElementById('sun-card');
+            sunCard.innerHTML = `
+                ${createDetailItem('Amanecer', convertUnixToTime(sys.sunrise, data.timezone), '', icons.sunrise)}
+                <hr class="my-4">
+                ${createDetailItem('Atardecer', convertUnixToTime(sys.sunset, data.timezone), '', icons.sunset)}
+            `;
+        }
+        
+        // --- FUNCIONES AUXILIARES ---
+        function createDetailItem(title, value, subtitle, icon) {
+            return `
+                <div class="flex items-center">
+                    <div class="icon-container text-indigo-500 mr-4">${icon}</div>
+                    <div>
+                        <p class="text-sm text-gray-500">${title}</p>
+                        <p class="text-lg font-bold text-gray-800">${value}</p>
+                        ${subtitle ? `<p class="text-xs text-gray-400">${subtitle}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function convertUnixToTime(unixTimestamp, timezoneOffset) {
+            const date = new Date((unixTimestamp + timezoneOffset) * 1000);
+            return date.toUTCString().match(/(\d\d:\d\d)/)[0];
+        }
+
+        function convertWindDirection(degrees) {
+            const directions = ['Norte', 'Noreste', 'Este', 'Sureste', 'Sur', 'Suroeste', 'Oeste', 'Noroeste'];
+            return directions[Math.round(degrees / 45) % 8];
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorContainer.classList.remove('hidden');
+        }
+
+        function hideError() {
+            if (!errorContainer.classList.contains('hidden')) {
+                errorContainer.classList.add('hidden');
+            }
+        }
+        
+        function hideResults() {
+             if (!resultsContainer.classList.contains('hidden')) {
+                resultsContainer.classList.add('hidden');
+             }
+        }
+
+    </script>
+</body>
+</html>
